@@ -12,7 +12,7 @@ type LevelHandler struct {
 
 func NewLevelHandler(level slog.Level, h slog.Handler) *LevelHandler {
 	if lh, ok := h.(*LevelHandler); ok {
-		h = lh.Handler()
+		h = lh.handler
 	}
 	return &LevelHandler{level, h}
 }
@@ -31,8 +31,4 @@ func (h *LevelHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 
 func (h *LevelHandler) WithGroup(name string) slog.Handler {
 	return NewLevelHandler(h.level, h.handler.WithGroup(name))
-}
-
-func (h *LevelHandler) Handler() slog.Handler {
-	return h.handler
 }

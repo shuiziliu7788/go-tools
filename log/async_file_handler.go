@@ -3,6 +3,7 @@ package log
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -67,7 +68,7 @@ type FileHandlerOptions struct {
 	RotateHours uint
 }
 
-type AsyncFileWrite struct {
+type AsyncFileWriter struct {
 	filePath    string
 	fd          *os.File
 	wg          sync.WaitGroup
@@ -79,7 +80,7 @@ type AsyncFileWrite struct {
 	maxBackups  int
 }
 
-func (w *AsyncFileWrite) initLogFile() error {
+func (w *AsyncFileWriter) initLogFile() error {
 	var (
 		fd  *os.File
 		err error
@@ -103,7 +104,7 @@ func (w *AsyncFileWrite) initLogFile() error {
 	return nil
 }
 
-func (w *AsyncFileWrite) Start() error {
+func (w *AsyncFileWriter) Start() error {
 	if !atomic.CompareAndSwapInt32(&w.started, 0, 1) {
 		return errors.New("logger has already been started")
 	}
@@ -140,7 +141,7 @@ func (w *AsyncFileWrite) Start() error {
 	return nil
 }
 
-func (w *AsyncFileWrite) flushBuffer() {
+func (w *AsyncFileWriter) flushBuffer() {
 	for {
 		select {
 		case msg := <-w.buf:
@@ -151,14 +152,14 @@ func (w *AsyncFileWrite) flushBuffer() {
 	}
 }
 
-func (w *AsyncFileWrite) SyncWrite(msg []byte) {
+func (w *AsyncFileWriter) SyncWrite(msg []byte) {
 	w.rotateFile()
 	if w.fd != nil {
 		w.fd.Write(msg)
 	}
 }
 
-func (w *AsyncFileWrite) rotateFile() {
+func (w *AsyncFileWriter) rotateFile() {
 	select {
 	case <-w.timeTicker.C:
 		if err := w.flushAndClose(); err != nil {
@@ -174,14 +175,14 @@ func (w *AsyncFileWrite) rotateFile() {
 	}
 }
 
-func (w *AsyncFileWrite) Stop() {
+func (w *AsyncFileWriter) Stop() {
 	w.stop <- struct{}{}
 	w.wg.Wait()
 
 	w.timeTicker.Stop()
 }
 
-func (w *AsyncFileWrite) Write(msg []byte) (n int, err error) {
+func (w *AsyncFileWriter) Write(msg []byte) (n int, err error) {
 	buf := make([]byte, len(msg))
 	copy(buf, msg)
 
@@ -193,14 +194,14 @@ func (w *AsyncFileWrite) Write(msg []byte) (n int, err error) {
 	return 0, nil
 }
 
-func (w *AsyncFileWrite) Flush() error {
+func (w *AsyncFileWriter) Flush() error {
 	if w.fd == nil {
 		return nil
 	}
 	return w.fd.Sync()
 }
 
-func (w *AsyncFileWrite) flushAndClose() error {
+func (w *AsyncFileWriter) flushAndClose() error {
 	if w.fd == nil {
 		return nil
 	}
@@ -213,11 +214,11 @@ func (w *AsyncFileWrite) flushAndClose() error {
 	return w.fd.Close()
 }
 
-func (w *AsyncFileWrite) timeFilePath(path string) string {
+func (w *AsyncFileWriter) timeFilePath(path string) string {
 	return path + "." + time.Now().Format(backupTimeFormat)
 }
 
-func (w *AsyncFileWrite) getExpiredFile(filePath string, maxBackups int, rotateHours uint) string {
+func (w *AsyncFileWriter) getExpiredFile(filePath string, maxBackups int, rotateHours uint) string {
 	if rotateHours > 0 {
 		maxBackups = int(rotateHours) * maxBackups
 	}
@@ -225,7 +226,7 @@ func (w *AsyncFileWrite) getExpiredFile(filePath string, maxBackups int, rotateH
 	return filePath + "." + time.Now().Add(-time.Hour*time.Duration(maxBackups)).Format(backupTimeFormat)
 }
 
-func (w *AsyncFileWrite) removeExpiredFile() error {
+func (w *AsyncFileWriter) removeExpiredFile() error {
 	if w.maxBackups == 0 {
 		return nil
 	}
@@ -243,7 +244,7 @@ func (w *AsyncFileWrite) removeExpiredFile() error {
 	return err
 }
 
-func NewAsyncFileWrite(opts *FileHandlerOptions) *AsyncFileWrite {
+func NewAsyncFileWriter(opts *FileHandlerOptions) *AsyncFileWriter {
 	if opts == nil {
 		opts = &FileHandlerOptions{}
 	}
@@ -260,7 +261,7 @@ func NewAsyncFileWrite(opts *FileHandlerOptions) *AsyncFileWrite {
 	if err != nil {
 		Fatal("could not get abs directory", "err", err)
 	}
-	writer := &AsyncFileWrite{
+	writer := &AsyncFileWriter{
 		filePath:    absFilePath,
 		buf:         make(chan []byte, opts.Limit),
 		stop:        make(chan struct{}),
@@ -272,4 +273,8 @@ func NewAsyncFileWrite(opts *FileHandlerOptions) *AsyncFileWrite {
 		Fatal("could not start async file handler", "err", err)
 	}
 	return writer
+}
+
+func NewTextHandler(w io.Writer, opts *slog.HandlerOptions) *slog.TextHandler {
+	return slog.NewTextHandler(w, opts)
 }

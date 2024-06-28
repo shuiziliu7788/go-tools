@@ -2,11 +2,18 @@ package log
 
 import (
 	"context"
-	"fmt"
-	"github.com/shuiziliu7788/go-tools/notification"
+	"html/template"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
+)
+
+var (
+	defaultNotifications = &notifications{}
+	HTML, _              = template.New("example").Parse(`
+	
+`)
 )
 
 type MetricsHandlerOptions struct {
@@ -16,7 +23,7 @@ type MetricsHandlerOptions struct {
 	Expr           string // eq gt egt lt egt 默认 egt
 	Threshold      int64
 	RepeatInterval time.Duration // 通知的重复间隔
-	Notification   func(alert notification.Message) error
+	Notifications  Notifier
 }
 
 type MetricsHandler struct {
@@ -31,17 +38,18 @@ type MetricsHandler struct {
 }
 
 func (m *MetricsHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	fmt.Println("创建信息")
 	return &MetricsHandler{
-		Handler: m.Handler.WithAttrs(attrs),
-		opts:    m.opts,
+		Handler:        m.Handler.WithAttrs(attrs),
+		opts:           m.opts,
+		nextEvaluation: time.Now().Add(m.opts.Evaluate),
 	}
 }
 
 func (m *MetricsHandler) WithGroup(name string) slog.Handler {
 	return &MetricsHandler{
-		Handler: m.Handler.WithGroup(name),
-		opts:    m.opts,
+		Handler:        m.Handler.WithGroup(name),
+		opts:           m.opts,
+		nextEvaluation: time.Now().Add(m.opts.Evaluate),
 	}
 }
 
@@ -82,9 +90,9 @@ func (m *MetricsHandler) Handle(ctx context.Context, record slog.Record) error {
 		// 判断是否需要发送恢复通知
 		if !m.lastNotification.IsZero() && record.Time.Sub(m.lastEvaluation) > m.opts.For {
 			// 发送恢复通知
-			go m.opts.Notification(&Alert{
+			go m.opts.Notifications.Send(Alert{
 				Status:   false,
-				Label:    "",
+				Job:      "",
 				Value:    0,
 				Record:   slog.Record{},
 				StartsAt: time.Time{},
@@ -107,13 +115,12 @@ func (m *MetricsHandler) Handle(ctx context.Context, record slog.Record) error {
 			return nil
 		}
 		// 发送异常通知
-		go m.opts.Notification(Alert{
+		go m.opts.Notifications.Send(Alert{
 			Status:   false,
-			Label:    "",
+			Job:      "",
 			Value:    0,
 			Record:   slog.Record{},
 			StartsAt: time.Time{},
-			EndsAt:   time.Time{},
 		})
 		// 记录发送通知时间
 		m.lastNotification = record.Time
@@ -123,6 +130,15 @@ func (m *MetricsHandler) Handle(ctx context.Context, record slog.Record) error {
 }
 
 func NewMetricsHandler(h slog.Handler, opts *MetricsHandlerOptions) *MetricsHandler {
+	if mh, ok := h.(*MetricsHandler); ok {
+		h = mh.Handler
+	}
+
+	// 检查参数
+	if opts.Notifications == nil {
+		opts.Notifications = defaultNotifications
+	}
+
 	return &MetricsHandler{
 		Handler:        h,
 		opts:           opts,
@@ -132,7 +148,7 @@ func NewMetricsHandler(h slog.Handler, opts *MetricsHandlerOptions) *MetricsHand
 
 type Alert struct {
 	Status   bool
-	Label    string
+	Job      string
 	Value    int64
 	Record   slog.Record
 	StartsAt time.Time
@@ -140,13 +156,29 @@ type Alert struct {
 }
 
 func (a Alert) Subject() string {
-	return ""
+	var builder strings.Builder
+	if a.Status {
+		builder.WriteString("【恢复】")
+	} else {
+		builder.WriteString("【报警】")
+	}
+	builder.WriteString(a.Job)
+	builder.WriteString(a.Record.Message)
+	return builder.String()
 }
 
 func (a Alert) HTML() string {
+	// {{ .Name | ToUpper }}
 	return ""
 }
 
 func (a Alert) Markdown() string {
 	return ""
+}
+
+type notifications struct {
+}
+
+func (n *notifications) Send(alert Alert) error {
+	return nil
 }
