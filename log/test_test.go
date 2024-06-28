@@ -52,6 +52,21 @@ func TestNotify(t *testing.T) {
 		t.Fatal(err)
 	}
 	alert := Alert{
+		Status: false,
+		Job:    "ETH",
+		Value:  0,
+		Record: slog.Record{
+			Message: "系统错误",
+		},
+		StartsAt: time.Now(),
+		EndsAt:   time.Now().Add(time.Hour),
+	}
+	alert.StartsAt.Format("2006-01-02 15:04:05 G")
+	n.Send(alert)
+}
+
+func TestHtml(t *testing.T) {
+	alert := Alert{
 		Status:   false,
 		Job:      "ETH",
 		Value:    0,

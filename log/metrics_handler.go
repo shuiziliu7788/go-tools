@@ -2,8 +2,11 @@ package log
 
 import (
 	"context"
+	"fmt"
 	"html/template"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -12,11 +15,60 @@ import (
 var (
 	defaultNotifications = &notifications{}
 	HTML, _              = template.New("example").Parse(`
-	
+<div style="background-color:#111217;margin: 0;padding: 0">
+    <div style="background:#22252b;background-color:#22252b;margin:0 auto;max-width:600px;min-height: 200px;padding: 20px">
+        <div style="text-align: left;border-bottom:1px solid #2f3037;direction:ltr;font-size:0;padding:10px 0;">
+            <strong style="font-family:Ubuntu, Helvetica, Arial, sans-serif;font-size:13px;text-align:left;color:#FFFFFF;line-height: 32px">
+                {{.Subject}}
+            </strong>
+        </div>
+
+        <div>
+            <div style="font-family:Ubuntu, Helvetica, Arial, sans-serif;font-size:13px;text-align:left;color:#FFFFFF;line-height: 32px">
+                <strong>标签</strong>
+            </div>
+            <div style="font-family:Ubuntu, Helvetica, Arial, sans-serif;font-size:12px;line-height:1.5;text-align:left;color:#FFFFFF;word-break:break-word;">
+                <p>报警名称: {{.Job}}</p>
+                <p>开始时间: {{.StartsAt.Format "2006-01-02 15:04:05"}}</p>
+                <p>持续时长: {{.For}}</p>
+                {{if .Status}}
+                <p>恢复时间: {{.EndsAt.Format "2006-01-02 15:04:05"}}</p>
+                {{else}}
+				
+                {{end}}
+            </div>
+        </div>
+
+        <div>
+            <div style="font-family:Ubuntu, Helvetica, Arial, sans-serif;font-size:13px;text-align:left;color:#FFFFFF;line-height: 42px">
+                <strong>信息</strong>
+            </div>
+            <div style="background-color:#111217;border:1px solid #2f3037;vertical-align:top;padding:16px;">
+                <div style="font-family:Ubuntu, Helvetica, Arial, sans-serif;font-size:13px;line-height:1.5;text-align:left;color:#FFFFFF;word-break:break-word;">
+                    {{if .Status}}
+                    当前已恢复
+                    {{else}}
+                    <p>{{.Record.Message}}</p>
+                    {{range .Attrs}}
+                    <p>{{.}}</p>
+                    {{end}}
+                    {{end}}
+                </div>
+            </div>
+        </div>
+
+        <div style="text-align: center;border-top:1px solid #2f3037;direction:ltr;font-size:0;padding:10px 0;">
+            <div style="font-family:Ubuntu, Helvetica, Arial, sans-serif;font-size:13px;line-height:1.5;text-align:left;color:#91929e;">
+                故障已持续{{.For}} 开始于 {{.StartsAt.Format "2006-01-02 15:04:05"}}
+            </div>
+        </div>
+    </div>
+</div>
 `)
 )
 
 type MetricsHandlerOptions struct {
+	JobName        string
 	Level          slog.Level
 	Evaluate       time.Duration
 	For            time.Duration
@@ -28,6 +80,7 @@ type MetricsHandlerOptions struct {
 
 type MetricsHandler struct {
 	slog.Handler
+	JobName          string
 	opts             *MetricsHandlerOptions
 	uncounted        int64
 	counted          int64
@@ -47,7 +100,8 @@ func (m *MetricsHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 
 func (m *MetricsHandler) WithGroup(name string) slog.Handler {
 	return &MetricsHandler{
-		Handler:        m.Handler.WithGroup(name),
+		JobName:        fmt.Sprintf("%s/%s", m.JobName, name),
+		Handler:        m.Handler,
 		opts:           m.opts,
 		nextEvaluation: time.Now().Add(m.opts.Evaluate),
 	}
@@ -56,6 +110,9 @@ func (m *MetricsHandler) WithGroup(name string) slog.Handler {
 func (m *MetricsHandler) Handle(ctx context.Context, record slog.Record) error {
 	if err := m.Handler.Handle(ctx, record); err != nil {
 		return err
+	}
+	if record.Level < m.opts.Level {
+		return nil
 	}
 	m.mu.Lock()
 	m.uncounted++
@@ -91,12 +148,14 @@ func (m *MetricsHandler) Handle(ctx context.Context, record slog.Record) error {
 		if !m.lastNotification.IsZero() && record.Time.Sub(m.lastEvaluation) > m.opts.For {
 			// 发送恢复通知
 			go m.opts.Notifications.Send(Alert{
-				Status:   false,
-				Job:      "",
-				Value:    0,
-				Record:   slog.Record{},
-				StartsAt: time.Time{},
-				EndsAt:   time.Time{},
+				Status: false,
+				Job:    m.JobName,
+				Value:  0,
+				Record: slog.Record{
+					Message: "故障已恢复",
+				},
+				StartsAt: m.lastEvaluation,
+				EndsAt:   time.Now(),
 			})
 		}
 		m.lastEvaluation = time.Time{}
@@ -114,13 +173,14 @@ func (m *MetricsHandler) Handle(ctx context.Context, record slog.Record) error {
 		if record.Time.Sub(m.lastNotification) < m.opts.RepeatInterval {
 			return nil
 		}
+		record.AddAttrs(slog.Int64("数值", m.opts.Threshold))
 		// 发送异常通知
 		go m.opts.Notifications.Send(Alert{
 			Status:   false,
-			Job:      "",
+			Job:      m.JobName,
 			Value:    0,
-			Record:   slog.Record{},
-			StartsAt: time.Time{},
+			Record:   record,
+			StartsAt: m.lastEvaluation,
 		})
 		// 记录发送通知时间
 		m.lastNotification = record.Time
@@ -139,7 +199,14 @@ func NewMetricsHandler(h slog.Handler, opts *MetricsHandlerOptions) *MetricsHand
 		opts.Notifications = defaultNotifications
 	}
 
+	if opts.JobName == "" {
+		if execPath, err := os.Executable(); err == nil {
+			opts.JobName = filepath.Base(execPath)
+		}
+	}
+
 	return &MetricsHandler{
+		JobName:        opts.JobName,
 		Handler:        h,
 		opts:           opts,
 		nextEvaluation: time.Now().Add(opts.Evaluate),
@@ -153,6 +220,7 @@ type Alert struct {
 	Record   slog.Record
 	StartsAt time.Time
 	EndsAt   time.Time
+	Attrs    []slog.Attr
 }
 
 func (a Alert) Subject() string {
@@ -163,13 +231,25 @@ func (a Alert) Subject() string {
 		builder.WriteString("【报警】")
 	}
 	builder.WriteString(a.Job)
-	builder.WriteString(a.Record.Message)
+	builder.WriteString("(" + a.Record.Message + ")")
 	return builder.String()
 }
 
+func (a Alert) formatDate(t time.Time, format string) string {
+	return t.Format(format)
+}
+
 func (a Alert) HTML() string {
-	// {{ .Name | ToUpper }}
-	return ""
+	builder := &strings.Builder{}
+	if err := HTML.Execute(builder, a); err != nil {
+		fmt.Println("错误", err)
+		return ""
+	}
+	return builder.String()
+}
+
+func (a Alert) For() time.Duration {
+	return a.EndsAt.Sub(a.StartsAt)
 }
 
 func (a Alert) Markdown() string {

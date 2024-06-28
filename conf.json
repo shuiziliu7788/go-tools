@@ -1,7 +1,0 @@
-[
-  {
-    "type": "wx_pusher",
-    "app_token": "email",
-    "topic_ids": [100]
-  }
-]
