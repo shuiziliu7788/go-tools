@@ -38,6 +38,12 @@ func (l *Logger) With(args ...any) *Logger {
 	}
 }
 
+func (l *Logger) WithGroup(name string) *Logger {
+	return &Logger{
+		l.inner.WithGroup(name),
+	}
+}
+
 func (l *Logger) New(args ...any) *Logger {
 	return l.With(args...)
 }

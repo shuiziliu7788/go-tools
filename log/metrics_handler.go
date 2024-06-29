@@ -18,11 +18,10 @@ var (
 <div style="background-color:#111217;margin: 0;padding: 0">
     <div style="background:#22252b;background-color:#22252b;margin:0 auto;max-width:600px;min-height: 200px;padding: 20px">
         <div style="text-align: left;border-bottom:1px solid #2f3037;direction:ltr;font-size:0;padding:10px 0;">
-            <strong style="font-family:Ubuntu, Helvetica, Arial, sans-serif;font-size:13px;text-align:left;color:#FFFFFF;line-height: 32px">
+            <strong style="font-family:Ubuntu, Helvetica, Arial, sans-serif;font-size:13px;text-align:left;color:#FFFFFF;line-height: 32px;word-break:break-word;">
                 {{.Subject}}
             </strong>
         </div>
-
         <div>
             <div style="font-family:Ubuntu, Helvetica, Arial, sans-serif;font-size:13px;text-align:left;color:#FFFFFF;line-height: 32px">
                 <strong>标签</strong>
@@ -31,14 +30,12 @@ var (
                 <p>报警名称: {{.Job}}</p>
                 <p>开始时间: {{.StartsAt.Format "2006-01-02 15:04:05"}}</p>
                 <p>持续时长: {{.For}}</p>
+				<p>错误总计: {{.Value}}</p>
                 {{if .Status}}
                 <p>恢复时间: {{.EndsAt.Format "2006-01-02 15:04:05"}}</p>
-                {{else}}
-				
-                {{end}}
+               	{{end}}
             </div>
         </div>
-
         <div>
             <div style="font-family:Ubuntu, Helvetica, Arial, sans-serif;font-size:13px;text-align:left;color:#FFFFFF;line-height: 42px">
                 <strong>信息</strong>
@@ -84,9 +81,11 @@ type MetricsHandler struct {
 	opts             *MetricsHandlerOptions
 	uncounted        int64
 	counted          int64
-	nextEvaluation   time.Time  // 下次评价时间
-	lastEvaluation   time.Time  // 异常开始时间
-	lastNotification time.Time  // 上次通知时间
+	total            int64
+	nextEvaluation   time.Time // 下次评价时间
+	lastEvaluation   time.Time // 异常开始时间
+	lastNotification time.Time // 上次通知时间
+	records          chan slog.Record
 	mu               sync.Mutex // 锁
 }
 
@@ -107,22 +106,28 @@ func (m *MetricsHandler) WithGroup(name string) slog.Handler {
 	}
 }
 
+func (m *MetricsHandler) handle(ctx context.Context, record slog.Record) error {
+	if m.Handler.Enabled(ctx, record.Level) {
+		return m.Handler.Handle(ctx, record)
+	}
+	return nil
+}
+
 func (m *MetricsHandler) Handle(ctx context.Context, record slog.Record) error {
-	if err := m.Handler.Handle(ctx, record); err != nil {
+	if err := m.handle(ctx, record); err != nil {
 		return err
 	}
-	if record.Level < m.opts.Level {
-		return nil
-	}
 	m.mu.Lock()
-	m.uncounted++
+	if record.Level >= m.opts.Level {
+		m.uncounted++
+	}
 	if m.nextEvaluation.After(record.Time) {
 		m.mu.Unlock()
 		return nil
 	}
+	m.nextEvaluation = record.Time.Add(m.opts.Evaluate)
 	m.counted = m.uncounted
 	m.uncounted = 0
-	m.nextEvaluation = record.Time.Add(m.opts.Evaluate)
 	m.mu.Unlock()
 	var firing bool
 	switch m.opts.Expr {
@@ -137,7 +142,6 @@ func (m *MetricsHandler) Handle(ctx context.Context, record slog.Record) error {
 	default:
 		firing = m.counted >= m.opts.Threshold
 	}
-
 	// 无警报
 	switch firing {
 	case false:
@@ -148,9 +152,9 @@ func (m *MetricsHandler) Handle(ctx context.Context, record slog.Record) error {
 		if !m.lastNotification.IsZero() && record.Time.Sub(m.lastEvaluation) > m.opts.For {
 			// 发送恢复通知
 			go m.opts.Notifications.Send(Alert{
-				Status: false,
+				Status: true,
 				Job:    m.JobName,
-				Value:  0,
+				Value:  m.total,
 				Record: slog.Record{
 					Message: "故障已恢复",
 				},
@@ -160,7 +164,9 @@ func (m *MetricsHandler) Handle(ctx context.Context, record slog.Record) error {
 		}
 		m.lastEvaluation = time.Time{}
 		m.lastNotification = time.Time{}
+		m.total = 0
 	default:
+		m.total = m.total + m.counted
 		if m.lastEvaluation.IsZero() {
 			m.lastEvaluation = record.Time
 			return nil
@@ -173,14 +179,14 @@ func (m *MetricsHandler) Handle(ctx context.Context, record slog.Record) error {
 		if record.Time.Sub(m.lastNotification) < m.opts.RepeatInterval {
 			return nil
 		}
-		record.AddAttrs(slog.Int64("数值", m.opts.Threshold))
 		// 发送异常通知
 		go m.opts.Notifications.Send(Alert{
 			Status:   false,
 			Job:      m.JobName,
-			Value:    0,
+			Value:    m.total,
 			Record:   record,
 			StartsAt: m.lastEvaluation,
+			EndsAt:   time.Now(),
 		})
 		// 记录发送通知时间
 		m.lastNotification = record.Time
@@ -226,7 +232,7 @@ type Alert struct {
 func (a Alert) Subject() string {
 	var builder strings.Builder
 	if a.Status {
-		builder.WriteString("【恢复】")
+		builder.WriteString("【已恢复】")
 	} else {
 		builder.WriteString("【报警】")
 	}
@@ -241,6 +247,10 @@ func (a Alert) formatDate(t time.Time, format string) string {
 
 func (a Alert) HTML() string {
 	builder := &strings.Builder{}
+	a.Record.Attrs(func(attr slog.Attr) bool {
+		a.Attrs = append(a.Attrs, attr)
+		return true
+	})
 	if err := HTML.Execute(builder, a); err != nil {
 		fmt.Println("错误", err)
 		return ""

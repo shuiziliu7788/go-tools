@@ -59,14 +59,8 @@ func (e *Email) UnmarshalJSON(data []byte) error {
 }
 
 func (e *Email) Send(alert Alert) error {
-	e.dialer = gomail.NewDialer(
-		e.Host,
-		e.Port,
-		e.Username,
-		e.Password,
-	)
 	message := gomail.NewMessage()
-	message.SetHeader("From", e.dialer.Username)
+	message.SetHeader("From", message.FormatAddress(e.Username, "系统警报系统"))
 	message.SetHeader("To", e.Recipient...)
 	message.SetHeader("Subject", alert.Subject())
 	message.SetBody("text/html", alert.HTML())

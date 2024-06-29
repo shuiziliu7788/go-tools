@@ -4,28 +4,64 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"testing"
 	"time"
 )
 
 func TestName(t *testing.T) {
-	writer := NewAsyncFileWriter(&FileHandlerOptions{
-		FilePath:    "",
-		Limit:       200,
-		MaxBackups:  1,
-		RotateHours: 6,
-	})
-	defer writer.Stop()
-	l := NewLogger(NewMetricsHandler(NewTextHandler(writer, nil), &MetricsHandlerOptions{
-		Level:          slog.LevelError,
-		Evaluate:       time.Second,
-		For:            time.Minute,
-		Expr:           "eq",
-		Threshold:      10,
+	var str = `[
+  {
+    "type": "wx_pusher",
+    "app_token": "AT_s0Q5e8mpbeBvhAdx0WMms0YNxyrWCKV1",
+    "topic_ids": [31179]
+  },
+ {
+      "type": "email",
+    "host": "smtp.qq.com",
+    "port": 465,
+    "username": "@qq.com",
+    "password": "",
+    "recipient": ["@qq.com"],
+  }
+]
+`
+	var n Notify
+	if err := json.Unmarshal([]byte(str), &n); err != nil {
+		t.Fatal(err)
+	}
+	l := NewLogger(NewMetricsHandler(NewTextHandler(os.Stdout, nil), &MetricsHandlerOptions{
+		Level:          LevelError,
+		JobName:        "测试系统",
+		Evaluate:       3 * time.Second,
+		For:            1 * time.Second,
+		Threshold:      2,
 		RepeatInterval: time.Minute,
+		Notifications:  &n,
 	}))
-	l.Error("SSS")
-	l.Error("SSS")
+	go func() {
+		for i := 0; i < 10; i++ {
+			l.Error("获取区块错误", "err", "就是获取不到")
+			time.Sleep(time.Second)
+		}
+
+		for i := 0; i < 10; i++ {
+			l.Info("获取区块错误")
+			time.Sleep(time.Second)
+		}
+	}()
+	go func() {
+		log := l.WithGroup("二级")
+		for i := 0; i < 10; i++ {
+			log.Error("获取区块错误", "err", "二级")
+			time.Sleep(time.Second)
+		}
+		for i := 0; i < 10; i++ {
+			log.Info("获取区块错误")
+			time.Sleep(time.Second)
+		}
+	}()
+	time.Sleep(time.Hour)
 }
 
 func TestNotify(t *testing.T) {
