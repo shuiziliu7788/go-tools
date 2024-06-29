@@ -61,7 +61,6 @@ func getNextRotationHour(now time.Time, delta uint) int {
 }
 
 type FileHandlerOptions struct {
-	Level       slog.Level
 	FilePath    string
 	Limit       int64
 	MaxBackups  int

@@ -76,7 +76,7 @@ type MetricsHandlerOptions struct {
 }
 
 type MetricsHandler struct {
-	slog.Handler
+	handler          slog.Handler
 	JobName          string
 	opts             *MetricsHandlerOptions
 	uncounted        int64
@@ -89,9 +89,13 @@ type MetricsHandler struct {
 	mu               sync.Mutex // 锁
 }
 
+func (m *MetricsHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return m.handler.Enabled(ctx, level)
+}
+
 func (m *MetricsHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &MetricsHandler{
-		Handler:        m.Handler.WithAttrs(attrs),
+		handler:        m.handler.WithAttrs(attrs),
 		opts:           m.opts,
 		nextEvaluation: time.Now().Add(m.opts.Evaluate),
 	}
@@ -100,21 +104,14 @@ func (m *MetricsHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 func (m *MetricsHandler) WithGroup(name string) slog.Handler {
 	return &MetricsHandler{
 		JobName:        fmt.Sprintf("%s/%s", m.JobName, name),
-		Handler:        m.Handler,
+		handler:        m.handler,
 		opts:           m.opts,
 		nextEvaluation: time.Now().Add(m.opts.Evaluate),
 	}
 }
 
-func (m *MetricsHandler) handle(ctx context.Context, record slog.Record) error {
-	if m.Handler.Enabled(ctx, record.Level) {
-		return m.Handler.Handle(ctx, record)
-	}
-	return nil
-}
-
 func (m *MetricsHandler) Handle(ctx context.Context, record slog.Record) error {
-	if err := m.handle(ctx, record); err != nil {
+	if err := m.handler.Handle(ctx, record); err != nil {
 		return err
 	}
 	m.mu.Lock()
@@ -142,6 +139,7 @@ func (m *MetricsHandler) Handle(ctx context.Context, record slog.Record) error {
 	default:
 		firing = m.counted >= m.opts.Threshold
 	}
+	fmt.Println(firing)
 	// 无警报
 	switch firing {
 	case false:
@@ -197,10 +195,9 @@ func (m *MetricsHandler) Handle(ctx context.Context, record slog.Record) error {
 
 func NewMetricsHandler(h slog.Handler, opts *MetricsHandlerOptions) *MetricsHandler {
 	if mh, ok := h.(*MetricsHandler); ok {
-		h = mh.Handler
+		h = mh.handler
 	}
 
-	// 检查参数
 	if opts.Notifications == nil {
 		opts.Notifications = defaultNotifications
 	}
@@ -213,7 +210,7 @@ func NewMetricsHandler(h slog.Handler, opts *MetricsHandlerOptions) *MetricsHand
 
 	return &MetricsHandler{
 		JobName:        opts.JobName,
-		Handler:        h,
+		handler:        h,
 		opts:           opts,
 		nextEvaluation: time.Now().Add(opts.Evaluate),
 	}

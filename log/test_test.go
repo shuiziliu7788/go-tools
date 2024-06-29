@@ -13,16 +13,8 @@ func TestName(t *testing.T) {
 	var str = `[
   {
     "type": "wx_pusher",
-    "app_token": "AT_s0Q5e8mpbeBvhAdx0WMms0YNxyrWCKV1",
+    "app_token": "",
     "topic_ids": [31179]
-  },
- {
-      "type": "email",
-    "host": "smtp.qq.com",
-    "port": 465,
-    "username": "@qq.com",
-    "password": "",
-    "recipient": ["@qq.com"],
   }
 ]
 `
@@ -36,7 +28,7 @@ func TestName(t *testing.T) {
 		Evaluate:       3 * time.Second,
 		For:            1 * time.Second,
 		Threshold:      2,
-		RepeatInterval: time.Minute,
+		RepeatInterval: 5 * time.Second,
 		Notifications:  &n,
 	}))
 	go func() {
@@ -44,7 +36,6 @@ func TestName(t *testing.T) {
 			l.Error("获取区块错误", "err", "就是获取不到")
 			time.Sleep(time.Second)
 		}
-
 		for i := 0; i < 10; i++ {
 			l.Info("获取区块错误")
 			time.Sleep(time.Second)
@@ -111,4 +102,17 @@ func TestHtml(t *testing.T) {
 		EndsAt:   time.Time{},
 	}
 	fmt.Println(alert.HTML())
+}
+
+func TestConfig(t *testing.T) {
+	options := Metrics{
+		Evaluate: Duration(time.Second),
+	}
+	marshal, _ := json.Marshal(options)
+	fmt.Println(options)
+	var s Metrics
+	if err := json.Unmarshal(marshal, &s); err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(s)
 }

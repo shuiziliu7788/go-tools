@@ -19,31 +19,31 @@ func SetDefault(l *Logger) {
 	slog.SetDefault(l.inner)
 }
 
-func Root() *Logger {
+func Default() *Logger {
 	return root.Load().(*Logger)
 }
 
 func Debug(msg string, args ...any) {
-	Root().Log(slog.LevelDebug, msg, args...)
+	Default().Log(slog.LevelDebug, msg, args...)
 }
 
 func Info(msg string, args ...any) {
-	Root().Log(slog.LevelInfo, msg, args...)
+	Default().Log(slog.LevelInfo, msg, args...)
 }
 
 func Warn(msg string, args ...any) {
-	Root().Log(slog.LevelWarn, msg, args...)
+	Default().Log(slog.LevelWarn, msg, args...)
 }
 
 func Error(msg string, args ...any) {
-	Root().Log(slog.LevelError, msg, args...)
+	Default().Log(slog.LevelError, msg, args...)
 }
 
 func Fatal(msg string, ctx ...interface{}) {
-	Root().Log(slog.LevelError, msg, ctx...)
+	Default().Log(slog.LevelError, msg, ctx...)
 	os.Exit(1)
 }
 
 func New(ctx ...interface{}) *Logger {
-	return Root().With(ctx...)
+	return Default().With(ctx...)
 }

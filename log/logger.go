@@ -57,6 +57,7 @@ func (l *Logger) Debug(msg string, args ...any) {
 }
 
 func (l *Logger) Info(msg string, args ...any) {
+
 	l.inner.Log(context.Background(), LevelInfo, msg, args...)
 }
 
