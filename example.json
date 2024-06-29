@@ -1,10 +1,28 @@
 {
-  "compilerOptions": {
-    "target": "es2016",
-    "module": "commonjs",
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "strict": true,
-    "skipLibCheck": true
+  "output": "",
+  "metrics": {
+    "job_name": "DAI同步",
+    "level": "ERROR",
+    "evaluate": "2m",
+    "for": "5m",
+    "threshold": 10,
+    "repeat_interval": "30m",
+    "notify": [
+      {
+        "type": "wx_pusher",
+        "app_token": "AT_dWk1PSaCmPieZ8MkuY7KqsOHxuwARB3t",
+        "topic_ids": [
+          31179
+        ]
+      },
+      {
+        "type": "email",
+        "host": "smtp.qq.com",
+        "port": 465,
+        "username": "alert_email@qq.com",
+        "password": "fgqwziwqocpobhei",
+        "recipient": ["21723614@qq,com"]
+      }
+    ]
   }
 }
