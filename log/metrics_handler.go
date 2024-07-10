@@ -139,7 +139,6 @@ func (m *MetricsHandler) Handle(ctx context.Context, record slog.Record) error {
 	default:
 		firing = m.counted >= m.opts.Threshold
 	}
-	fmt.Println(firing)
 	// 无警报
 	switch firing {
 	case false:
