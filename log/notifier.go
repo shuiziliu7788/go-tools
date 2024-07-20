@@ -124,7 +124,6 @@ type Notify struct {
 }
 
 func (n *Notify) Send(alert Alert) error {
-	fmt.Println("发送邮件")
 	for _, notifier := range n.Notifier {
 		notifier.Send(alert)
 	}
