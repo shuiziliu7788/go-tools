@@ -1,9 +1,9 @@
-package delay
+package utils
 
 import (
 	"crypto/tls"
-	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptrace"
 	"sort"
@@ -22,7 +22,6 @@ func TestDelay(urls []string) ([]Delay, error) {
 		hosts []Delay
 	)
 	wg.Add(len(urls))
-
 	for _, url := range urls {
 		go func(url string) {
 			var (
@@ -67,16 +66,28 @@ func TestDelay(urls []string) ([]Delay, error) {
 	return hosts, nil
 }
 
-func TestRegion(urls map[string]string) (string, error) {
-	var ip struct {
-		CountryCode string `json:"country_code"`
+func GetPublicIpV4() (string, error) {
+	resp, err := http.Get("https://api.ipify.org/")
+	if err != nil {
+		return "", err
 	}
-	if resp, err := http.Get("https://ip234.in/ip.json"); err == nil {
-		_ = json.NewDecoder(resp.Body).Decode(&ip)
-		resp.Body.Close()
+	defer resp.Body.Close()
+	all, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
 	}
-	if _, ok := urls[ip.CountryCode]; !ok {
-		return "", errors.New("no valid region found")
+	return string(all), nil
+}
+
+func GetPublicIpApi6() (string, error) {
+	resp, err := http.Get("https://api6.ipify.org")
+	if err != nil {
+		return "", err
 	}
-	return urls[ip.CountryCode], nil
+	defer resp.Body.Close()
+	all, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	return string(all), nil
 }

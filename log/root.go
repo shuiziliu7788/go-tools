@@ -9,41 +9,46 @@ import (
 var root atomic.Value
 
 func init() {
-	root.Store(&Logger{
-		inner: slog.Default(),
-	})
+	defaultLogger := &logger{slog.New(NewTerminalHandler(os.Stdout, true))}
+	SetDefault(defaultLogger)
 }
 
-func SetDefault(l *Logger) {
+func SetDefault(l Logger) {
 	root.Store(l)
-	slog.SetDefault(l.inner)
+	if lg, ok := l.(*logger); ok {
+		slog.SetDefault(lg.inner)
+	}
 }
 
-func Default() *Logger {
-	return root.Load().(*Logger)
+func Root() Logger {
+	return root.Load().(Logger)
 }
 
-func Debug(msg string, args ...any) {
-	Default().Log(slog.LevelDebug, msg, args...)
+func Trace(msg string, ctx ...any) {
+	Root().Write(LevelTrace, msg, ctx...)
 }
 
-func Info(msg string, args ...any) {
-	Default().Log(slog.LevelInfo, msg, args...)
+func Debug(msg string, ctx ...any) {
+	Root().Write(slog.LevelDebug, msg, ctx...)
 }
 
-func Warn(msg string, args ...any) {
-	Default().Log(slog.LevelWarn, msg, args...)
+func Info(msg string, ctx ...any) {
+	Root().Write(slog.LevelInfo, msg, ctx...)
 }
 
-func Error(msg string, args ...any) {
-	Default().Log(slog.LevelError, msg, args...)
+func Warn(msg string, ctx ...any) {
+	Root().Write(slog.LevelWarn, msg, ctx...)
 }
 
-func Fatal(msg string, ctx ...interface{}) {
-	Default().Log(slog.LevelError, msg, ctx...)
+func Error(msg string, ctx ...any) {
+	Root().Write(slog.LevelError, msg, ctx...)
+}
+
+func Fatal(msg string, ctx ...any) {
+	Root().Write(LevelFatal, msg, ctx...)
 	os.Exit(1)
 }
 
-func New(ctx ...interface{}) *Logger {
-	return Default().With(ctx...)
+func New(ctx ...any) Logger {
+	return Root().With(ctx...)
 }
