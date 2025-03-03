@@ -3,7 +3,7 @@ package notify
 import (
 	"bytes"
 	"encoding/json"
-	log "github.com/shuiziliu7788/go-tools/log"
+	"fmt"
 	"net/http"
 )
 
@@ -25,18 +25,18 @@ func (wx *WxPusher) Send(title string, content string) {
 		"verifyPayType": 0,
 	})
 	if err != nil {
-		log.Warn("marshal WxPusher message error", "err", err)
+		fmt.Println("marshal WxPusher message error", err)
 		return
 	}
 	req, err := http.NewRequest("POST", "https://wxpusher.zjiecode.com/api/send/message", bytes.NewBuffer(marshal))
 	if err != nil {
-		log.Warn("new request error", "err", err)
+		fmt.Println("new request error", err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		log.Warn("send wx_pusher error", "err", err)
+		fmt.Println("send wx_pusher error", err)
 		return
 	}
 	resp.Body.Close()

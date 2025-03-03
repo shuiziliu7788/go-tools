@@ -2,7 +2,6 @@ package notify
 
 import (
 	"fmt"
-	log "github.com/shuiziliu7788/go-tools/log"
 	"gopkg.in/gomail.v2"
 )
 
@@ -27,7 +26,6 @@ func (e *Email) Send(title string, content string) {
 		e.Password,
 	)
 	if err := dialer.DialAndSend(message); err != nil {
-		fmt.Println(err)
-		log.Warn("send email error:", err)
+		fmt.Println("send email error:", err)
 	}
 }

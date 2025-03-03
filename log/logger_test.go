@@ -1,8 +1,10 @@
 package log
 
 import (
+	"github.com/shuiziliu7788/go-tools/notify"
 	"os"
 	"testing"
+	"time"
 )
 
 func TestTrace(t *testing.T) {
@@ -15,14 +17,19 @@ func TestTrace(t *testing.T) {
 
 func TestMetric(t *testing.T) {
 	metric := &Metric{
-		lvl: LevelTrace,
+		Level:          LevelTrace,
+		Name:           "测试",
+		NotifyPeriod:   time.Second * 5,
+		EvaluatePeriod: time.Second * 2,
+		Threshold:      50,
+		Notify: &notify.WxPusher{
+			AppToken: "AT_dWk1PSaCmPieZ8MkuY7KqsOHxuwARB3t",
+			TopicIds: []int{31179},
+			Uids:     nil,
+		},
 	}
 	l := NewLogger(NewMetricHandler(NewTerminalHandlerWithLevel(os.Stdout, LevelWarn, true), metric))
-	with := l.With("with", "with")
-
-	with.Trace("Trace", "with_msg", "SSS")
-	with.Debug("Debug", "with_msg", "SSS")
-	with.Info("Info", "with_msg", "SSS")
-	with.Warn("Warn", "with_msg", "SSS")
-	with.Error("Error", "with_msg", "SSS")
+	for i := 0; i < 100; i++ {
+		l.Error("Error", "msg", i)
+	}
 }
